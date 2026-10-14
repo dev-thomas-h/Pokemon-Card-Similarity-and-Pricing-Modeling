@@ -102,6 +102,92 @@ import gzip, json
 snap = json.load(gzip.open("data/pricing/2026-07-06.json.gz", "rt"))
 ```
 
-Prices cannot be backfilled. TCGdex only serves the current market numbers.
-
 Card text, names, and images are © Pokémon / Nintendo / Creatures / GAME FREAK / The Pokémon Company. Data is assembled via [TCGdex](https://tcgdex.net). This repo is a personal local cache, not an official Pokémon product.
+
+---
+
+# Pokémon Card Collector Similarity & Price Maturation Engine
+
+This repository extends the raw card snapshot data with a machine-learning pipeline and **K-Nearest Neighbors (KNN)** similarity engine. The model is trained on mature vintage cards (`< 2016`) to find the historical counterparts of modern cards (`2016+`) and project long-term collector value based on empirical vintage precedents.
+
+## Added Files & Layout
+
+```
+pkm-card-data/
+├── data/
+│   ├── cards_tabular.parquet     # Unified, typed tabular dataset (21,812 cards, 40 columns)
+│   ├── cards_tabular.csv         # CSV export for inspection and analysis
+│   └── sets_metadata.json        # Cached set release dates, series, and official counts
+└── scripts/
+    ├── ingest_to_tabular.py      # Flattens nested JSONs and merges TCGplayer pricing
+    └── similarity_model.py       # Weighted KNN collector similarity and valuation engine
+```
+
+---
+
+## Model Architecture & Design Justifications
+
+### 1. Why K-Nearest Neighbors (KNN)?
+* **Real-World Appraisal Grounding**: Predicting the future price of speculative collectibles using black-box regression or deep learning yields single unexplainable numbers. KNN works identically to professional appraisal comps: *"Card X is projected to reach ~$375 because these 5 historical cards with the exact same prestige archetype sell for $375."*
+* **Era Asymmetry**: Vintage cards (Base Set through Black & White / early XY) have experienced 10–25 years of organic supply attrition and collector price discovery. Modern cards (Sun & Moon through Scarlet & Violet) are still experiencing active pack openings and short-term market fluctuations. KNN directly connects modern card traits to mature historical baselines.
+
+### 2. Feature Selection: Collectibility over Gameplay Stats
+Traditional card attributes like **HP, attack power, retreat costs, and damage** have near-zero correlation with secondary market collector value. A 30 HP Base Set Magikarp or a 120 HP Base Set Charizard sells for hundreds of dollars despite being unplayable in modern tournaments.
+
+Instead, the model vectorizes cards along **Collector Prestige Dimensions**:
+
+| Feature | Type | Weight | Valuation Rationale |
+| :--- | :--- | :---: | :--- |
+| **`rarity_tier`** | Ordinal (1–5) | **3.0** | Maps vintage grails (*Secret Rare, LEGEND, Shining*) to modern equivalents (*Special Illustration Rare, Hyper Rare*). |
+| **`is_secret_rare`** | Binary (0/1) | **2.5** | Cards numbered beyond the official set count (e.g. #199/165) command a 100x median price multiplier in vintage sets. |
+| **`subject_archetype`** | Categorical | **2.0–2.5** | Mapped via National Pokédex IDs (`dexId`): *Legendaries/Mythicals*, *Fan Favorites/Mascots* (Pikachu, Eeveelutions, Gengar), *Starter Lines* (Charizard, Blastoise), and *Regular Pokémon*. |
+| **`has_holo`** | Binary (0/1) | **1.5** | Holographic foil finish premium. |
+| **`stage_tier`** | Ordinal (0–4) | **1.0** | Stage 2 and special mechanics (VMAX, LV.X, Prime) carry distinct chase premiums over basic wild Pokémon. |
+| **`is_renowned_artist`**| Binary (0/1) | **1.0** | Celebrated artists (Ken Sugimori, Mitsuhiro Arita, Naoki Saito, etc.). |
+| **`has_first_edition`**| Binary (0/1) | **1.0** | Vintage 1st-edition scarcity flag. |
+| **`has_reverse`** | Binary (0/1) | **0.5** | Reverse holofoil finish. |
+
+### 3. Scaling & Distance Choice
+* **Standardization**: Features are scaled using `StandardScaler` ($\mu = 0, \sigma = 1$) to prevent numerical scales from overshadowing binary flags.
+* **Weighted Cosine Metric**:
+  $$D(\mathbf{u}, \mathbf{v}) = 1 - \frac{\mathbf{u} \cdot \mathbf{v}}{\|\mathbf{u}\|_2 \|\mathbf{v}\|_2}$$
+  Cosine distance measures the **directional profile** of the card in weighted collector space. It guarantees that cards with proportional feature alignments (e.g. high-prestige holo chase starters) cluster together regardless of magnitude offsets.
+
+### 4. Training & Inference
+* **Training Set**: 7,964 vintage cards (`release_year < 2016`) with active market sales in `data/pricing/latest.json`.
+* **Inference Set**: 12,818 modern cards (`release_year >= 2016`).
+* **Price Projection**: When evaluating card $C$, the engine queries the $k$ nearest historical neighbors $N_1, \dots, N_k$, computing:
+  $$\text{Projected Median Value} = \text{median}(\{P(N_1), \dots, P(N_k)\})$$
+  $$\text{Maturation Upside} = \frac{\text{Projected Median Value}}{P(C)}$$
+
+---
+
+## Quickstart & Usage
+
+### 1. Ingest Raw Data to Tabular Parquet/CSV
+```bash
+python3 scripts/ingest_to_tabular.py
+```
+
+### 2. Query a Modern Card by ID or Name
+```bash
+# Query by specific card ID (e.g. 151 Charizard ex)
+python3 scripts/similarity_model.py --card_id "sv03.5-199"
+
+# Query by Pokémon name (e.g. Gengar, Zapdos, Tinkaton)
+python3 scripts/similarity_model.py --card "Zapdos ex"
+```
+
+### 3. Scan Modern Sets for Top Undervalued Gems
+```bash
+python3 scripts/similarity_model.py --top-gems 10
+```
+
+---
+
+## Roadmap
+
+- [ ] **Feature Distinctiveness**: Introduce elemental typing (`Fire`, `Psychic`), Generation ID (`Gen 1–9`), set position ratio, and full-art frame flags to eliminate tie-collisions between unrelated cards.
+- [ ] **Interactive Web UI**: Streamlit application with dropdown card selectors, high-res card image previews (`tcgdex` assets), and filterable top-gems dashboard.
+- [ ] **Data Refresh Automation**: GitHub Action / cron job to pull new Saturday pricing snapshots and auto-regenerate parquet tables.
+
