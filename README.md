@@ -118,10 +118,45 @@ pkm-card-data/
 │   ├── cards_tabular.parquet     # Unified, typed tabular dataset (21,812 cards, 40 columns)
 │   ├── cards_tabular.csv         # CSV export for inspection and analysis
 │   └── sets_metadata.json        # Cached set release dates, series, and official counts
-└── scripts/
+├── models/                       # Serialized ML artifacts for sub-5ms inference
+│   ├── knn_model.joblib          # Trained NearestNeighbors index
+│   ├── scaler.joblib             # Fitted StandardScaler
+│   ├── train_cards.parquet       # Fast vintage benchmark index
+│   ├── query_cards.parquet       # Modern cards catalog with image URLs
+│   └── query_vectors.npy         # Pre-computed feature vectors
+├── src/                          # Modular production ML pipeline
+│   ├── features.py               # Feature definitions & transformation functions
+│   ├── train.py                  # Trains and exports artifacts to models/
+│   ├── inference.py              # Sub-millisecond similarity engine & gem scanner
+│   └── api.py                    # FastAPI REST server & static UI mount
+├── frontend/                     # Modern React + Vite web application
+│   ├── src/App.jsx               # Interactive Card Matcher & Top Gems UI
+│   ├── src/index.css             # Glassmorphic dark-mode collector theme
+│   └── dist/                     # Production React bundle
+├── run_app.sh                    # One-command launcher for the full-stack app
+└── scripts/                      # Prototyping & one-off utility scripts
     ├── ingest_to_tabular.py      # Flattens nested JSONs and merges TCGplayer pricing
-    └── similarity_model.py       # Weighted KNN collector similarity and valuation engine
+    └── similarity_model.py       # Standalone CLI similarity evaluator
 ```
+
+---
+
+## Interactive React Web Application
+
+To launch the full interactive web application (FastAPI backend + React frontend on `http://localhost:8000`):
+
+```bash
+./run_app.sh
+```
+*(Or run `python3 src/api.py`)*
+
+Then open your browser to **[http://localhost:8000](http://localhost:8000)**.
+
+### Features of the Web App:
+* **Interactive Card Search**: Instant debounced search across 12,800+ modern cards with set and rarity dropdown filters.
+* **Empirical Maturation Appraisal**: Displays high-resolution card artwork, collector prestige badges, current market price, and projected mature vintage value with upside multipliers.
+* **Historical Vintage Comps**: Displays the top 5 closest historical benchmark cards with image cards, release years, match percentages, and vintage market values.
+* **Top Gems Scanner**: Filterable discovery dashboard ranking modern chase cards with the highest historical appreciation potential.
 
 ---
 

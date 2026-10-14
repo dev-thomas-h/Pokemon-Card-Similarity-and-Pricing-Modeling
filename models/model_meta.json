@@ -1,0 +1,36 @@
+{
+  "trained_at": "2026-10-14T19:09:02.932184",
+  "train_cards_count": 7964,
+  "query_cards_count": 12818,
+  "feature_cols": [
+    "rarity_tier",
+    "is_secret_rare",
+    "has_holo",
+    "has_first_edition",
+    "has_reverse",
+    "arch_legend",
+    "arch_fav",
+    "arch_starter",
+    "arch_regular",
+    "arch_trainer",
+    "arch_energy",
+    "stage_tier",
+    "is_renowned_artist"
+  ],
+  "feature_weights": {
+    "rarity_tier": 3.0,
+    "is_secret_rare": 2.5,
+    "has_holo": 1.5,
+    "has_first_edition": 1.0,
+    "has_reverse": 0.5,
+    "arch_legend": 2.5,
+    "arch_fav": 2.0,
+    "arch_starter": 1.5,
+    "arch_regular": 1.0,
+    "arch_trainer": 1.5,
+    "arch_energy": 1.0,
+    "stage_tier": 1.0,
+    "is_renowned_artist": 1.0
+  },
+  "elapsed_seconds": 6.14
+}
