@@ -1,10 +1,10 @@
-# CLAUDE.md — Agent & Project Guide
+# AGENT.md — Agent & Project Guide
 
 ## Project Overview
 
-**Pokémon Card Collector Similarity & Price Maturation Engine**
-* **Core Goal**: Predict the long-term price equilibrium of modern Pokémon cards (`2016+`) by matching them to empirically mature vintage counterparts (`< 2016`) based on collector prestige archetypes rather than gameplay stats.
-* **Core Premise**: Vintage cards have experienced 10–25 years of organic supply attrition and collector price discovery. Modern chase cards (e.g. Special Illustration Rares) share similar collector archetypes with vintage chase cards (e.g. Secret Rares, Gold Stars, Shining cards). Finding these vintage "twins" provides an empirical appraisal of what modern cards can mature to over time.
+**Pokémon Card Collector Similarity & Price Maturation Engine (V2)**
+* **Core Goal**: Predict the long-term price equilibrium of modern Pokémon cards (`2016+`) by matching them to empirically mature vintage counterparts (`< 2016`) based on 31 collector prestige dimensions rather than gameplay stats.
+* **Core Premise**: Vintage cards have experienced 10–25 years of organic supply attrition and collector price discovery. Modern chase cards (e.g. Special Illustration Rares) share similar collector archetypes with vintage chase cards (e.g. Secret Rares, Gold Stars, Shining cards, Crystal Pokémon). Finding these vintage "twins" provides an empirical appraisal of what modern cards can mature to over time.
 
 ---
 
@@ -19,19 +19,19 @@ pkm-card-data/
 │   │   ├── latest.json           # Latest market price snapshot (TCGplayer USD, Cardmarket EUR)
 │   │   └── {YYYY-MM-DD}.json     # Weekly historical pricing snapshots
 │   ├── sets_metadata.json        # Cached set release dates, series, and officialCardCount
-│   ├── cards_tabular.parquet     # Unified typed table (21,812 cards, 40 features)
+│   ├── cards_tabular.parquet     # Unified typed table (21,812 cards, 40 base columns)
 │   └── cards_tabular.csv         # CSV export for inspection
 │
 ├── models/                       # Pre-computed, serialized ML artifacts (<5ms inference)
 │   ├── knn_model.joblib          # Fitted NearestNeighbors index (metric='cosine', k=10)
-│   ├── scaler.joblib             # Fitted StandardScaler on vintage feature space
+│   ├── scaler.joblib             # Unit-range identity scaler (with_mean=False, with_std=False)
 │   ├── train_cards.parquet       # Vintage cards baseline (<2016 with prices, 7,964 cards)
 │   ├── query_cards.parquet       # Modern cards catalog (>=2016, 12,818 cards with CDN image URLs)
-│   ├── query_vectors.npy         # Pre-transformed feature matrix for instant query lookup
+│   ├── query_vectors.npy         # Pre-transformed 31-feature weighted matrix for O(1) lookup
 │   └── model_meta.json           # Model training timestamp and feature metadata
 │
 ├── src/                          # Modular production ML pipeline
-│   ├── features.py               # Feature definitions, weights, Pokédex archetype maps
+│   ├── features.py               # V2 31-feature engineering engine, rarity reconstruction & weights
 │   ├── train.py                  # Training pipeline & artifact serialization
 │   ├── inference.py              # Sub-millisecond similarity engine & top-gems scanner
 │   └── api.py                    # FastAPI REST backend & static React app mount
@@ -46,9 +46,10 @@ pkm-card-data/
 │
 ├── scripts/                      # Standalone CLI tools & data ingestion
 │   ├── ingest_to_tabular.py      # Ingestion script (JSONs -> Parquet/CSV)
-│   └── similarity_model.py       # Standalone all-in-one CLI evaluator
+│   └── similarity_model.py       # Standalone CLI evaluator wrapping CardSimilarityEngine
 │
 ├── run_app.sh                    # Full-stack launcher script
+├── AGENT.md                      # Agent context, architecture & roadmap guide
 └── README.md                     # Public documentation with architectural justifications
 ```
 
@@ -74,7 +75,7 @@ python3 -m src.train
 
 # 3. CLI Query (Individual Card by ID or Name)
 python3 scripts/similarity_model.py --card_id "sv03.5-199"
-python3 scripts/similarity_model.py --card "Gengar"
+python3 scripts/similarity_model.py --card "Zapdos ex"
 
 # 4. CLI Scan for Top Modern Gems
 python3 scripts/similarity_model.py --top-gems 10
@@ -90,61 +91,63 @@ npm run build    # Rebuilds production bundle into frontend/dist/
 
 ---
 
-## Machine Learning & Modeling Architecture
+## Machine Learning & Modeling Architecture (V2 Engine)
 
 ### 1. Feature Philosophy: Collectibility > Battle Stats
-Battle stats (`hp`, `damage`, `retreat`, `attacks`) have near-zero correlation with secondary market collector value. A 30 HP Base Set Magikarp or a 120 HP Base Set Charizard sells for hundreds of dollars despite being unplayable in modern tournaments.
+Battle stats (`hp`, `damage`, `retreat`, `attacks`) have near-zero correlation with secondary market collector value. Instead, `src/features.py` vectorizes every card into **31 unit-range `[0, 1]` collector dimensions**:
 
-Instead, the model vectorizes cards along **Collector Prestige Dimensions**:
+1. **Empirical Vintage Species & Artist Prestige (Zero Data Leakage)**:
+   * **`species_prestige` (Weight: 3.5)**: Bayesian-smoothed log-price residual (`k_smooth = 4.0`) of each Pokémon species (`dex_id`) relative to its `rarity_tier` median, computed **exclusively on `< 2016` vintage cards**. Differentiates species within the same archetype (e.g. *Charizard* vs. *Venusaur*, *Umbreon* vs. *Glaceon*). Unseen Gen 7–9 species fall back to their archetype prior.
+   * **`artist_prestige` (Weight: 1.2)** & **`is_renowned_artist` (Weight: 0.8)**: Bayesian-smoothed vintage illustrator log-price premium (`k_smooth = 10.0`) paired with a curated hall-of-fame list (*Ken Sugimori, Mitsuhiro Arita, Yuka Morii, Naoki Saito, Kouki Saitou, Kagemaru Himeno, Atsuko Nishida, Masakazu Fukuda, Tomokazu Komiya, Ryo Ueda, 5ban Graphics, Akira Egawa, Shinji Kanda, HYOGONOSUKE, Teeziro, SowSow*).
 
-* **`rarity_tier` (Weight: 3.0)**: Standardizes 25 years of changing rarity labels into a 1–5 prestige scale:
-  * *Tier 5*: Vintage `Secret Rare`, `LEGEND`, `Shining`, `Gold Star` $\leftrightarrow$ Modern `Special illustration rare`, `Hyper rare`
-  * *Tier 4*: Vintage `Rare Holo LV.X`, `Rare PRIME`, `Ultra Rare` $\leftrightarrow$ Modern `Illustration rare`, `Ultra Rare` (Alt Arts)
-  * *Tier 3*: Vintage `Rare Holo` $\leftrightarrow$ Modern `Double rare`, `Holo Rare`, `Radiant Rare`, `ACE SPEC`
-  * *Tier 2*: Regular `Rare`, standard `Promo`
-  * *Tier 1*: `Uncommon`, `Common`, Bulk
-* **`is_secret_rare` (Weight: 2.5)**: Binary flag (`local_id > officialCardCount`). Secret rares command a 100x median price multiplier in vintage sets.
-* **`subject_archetype` (Weight: 2.0–2.5)**: Derived via National Pokédex number (`dexId`):
-  * `arch_legend`: Legendary / Mythical Pokémon (e.g. Mewtwo, Lugia, Rayquaza)
-  * `arch_fav`: Fan Favorites / Mascots (Pikachu, Eeveelutions, Gengar, Dragonite, Tyranitar)
-  * `arch_starter`: Starter evolutionary lines (Charizard, Blastoise, Venusaur, etc.)
-  * `arch_regular`: Standard wild Pokémon
-  * `arch_trainer`: Trainer cards
-  * `arch_energy`: Energy cards
-* **Finishes**: `has_holo` (1.5), `has_first_edition` (1.0), `has_reverse` (0.5)
-* **Stage & Form**: `stage_tier` (1.0) — Basic (1), Stage 1 (2), Stage 2 (3), Special mechanic (4: VMAX, LV.X, Prime, etc.)
-* **`is_renowned_artist` (Weight: 1.0)**: Renowned illustrators (Sugimori, Arita, Naoki Saito, etc.)
+2. **Reconstructed Rarity & Chase Status (Fixing the 1999–2010 TCGdex Blindspot)**:
+   * Raw TCGdex data labeled almost all 1999–2007 grails simply as `"rarity": "Rare"`. `src/features.py` reconstructs true collector tiers (`rarity_tier` 1–5 and `rarity_norm` in `[0, 1]`, Weight: **3.2**):
+     * **Tier 5**: Secret Rares (`local_id > officialCardCount`), Crystal Secret Rares (Aquapolis `145–147`, Skyridge `145–150`), Gold Stars (`" Star"`), `"Shining "` cards, `LEGEND`, Full-Art / Holo Vintage Supporters (`Ultra Rare` / `Rare Holo` Supporters), Modern `Special illustration rare`, `Hyper rare`.
+     * **Tier 4**: Vintage `ex` (`ex1`–`ex16`), e-Card `H01`–`H32` holos, `Rare Holo LV.X`, `Rare PRIME`, `Shiny rare`, Modern `Illustration rare`, `Ultra Rare`.
+     * **Tier 3**: 1999–2003 WOTC Holo-Only Rares (`local_id <= 15–19` in Base–Legendary Collection), `Rare Holo`, Modern `Double rare`, `Holo Rare V/VMAX/VSTAR`, `Radiant Rare`, `ACE SPEC Rare`.
+     * **Tier 2**: Regular non-holo `Rare`, standard `Promo`.
+     * **Tier 1**: `Uncommon`, `Common`.
+   * **`is_secret_rare` (Weight: 2.5)**, **`secret_depth` (Weight: 1.2)**, **`is_chase_card` (Weight: 1.8)**, **`set_pos_norm` (Weight: 0.8)**.
 
-### 2. Distance Metric & Scaling
-* Features are standardized via `StandardScaler` ($\mu = 0, \sigma = 1$) fitted **only** on vintage cards.
-* Scaled vectors are multiplied by `FEATURE_WEIGHTS`.
-* Similarity metric: **Weighted Cosine Distance**:
+3. **Biological Evolution Finality vs. Card Stage**:
+   * **`is_fully_evolved` (Weight: 1.5)**: Derives pre-evolution Dex IDs directly from `Stage1`/`Stage2` `evolve_from` chains so evolved Pokémon presented as Basic mechanics (*Charizard ex*, *Zapdos ex*) never match unevolved basic secret rares (*Charmander*, *Ralts*).
+   * **`stage_norm` (Weight: 1.0)**: Normalized progression from Basic (`0.25`) to Stage 2 (`0.75`) and Special/Mega/VMAX (`1.0`).
+
+4. **Subject & Trainer Subtype Archetypes**:
+   * **`arch_legend` (2.2)**, **`arch_fav` (2.0)**, **`arch_starter` (1.8)**, **`arch_pseudo` (1.6)**, **`arch_regular` (1.2)**, **`arch_energy` (2.0)**.
+   * **Trainer Split**: Splits Trainer cards into **`arch_supporter` (2.2)** and **`arch_item` (2.0)** so modern SIR Supporters (*Miriam*, *Iono*) match vintage Full-Art Supporters (*Bianca*, *Cheren*, *Sabrina*) instead of Gold Item cards (*Dive Ball*, *Switch*).
+
+5. **Generation Nostalgia & Elemental Typing**:
+   * **`gen_nostalgia` (1.6)** & **`gen_norm` (1.0)**: Captures the Gen 1 (Kanto) and Gen 2 (Johto) collector premium and continuous generation proximity.
+   * **11 Elemental Type Flags (`type_*`, Weight: 1.4 each)**: `Fire`, `Dragon`, `Darkness`, `Psychic`, `Lightning`, `Water`, `Grass`, `Fighting`, `Metal`, `Colorless`, `Fairy`.
+
+6. **Repaired Foil Finishes**:
+   * **`has_holo` (1.2)**, **`has_first_edition` (0.6)**, **`has_reverse` (0.4)**: Repairs missing `has_holo` flags in Black & White / XY sets (e.g. *Plasma Storm Charizard* `bw8-136`) using `pricing_variant` and `rarity_tier >= 3.0`.
+
+### 2. Distance Metric & Unit-Range Scaling
+* **Do NOT use `StandardScaler(with_std=True)`**: Dividing by standard deviation ($\sigma$) inflates sparse features (`secret_depth`, rare types, 1st Edition) by 10x–30x, drowning out `species_prestige` and `rarity_norm`.
+* Instead, all 31 features in `FEATURE_COLS` are explicitly normalized to **`[0, 1]`** inside `src/features.py` and multiplied directly by `FEATURE_WEIGHTS` (`StandardScaler(with_mean=False, with_std=False)` in `src/train.py`).
+* **Weighted Cosine Distance**:
   $$D(\mathbf{u}, \mathbf{v}) = 1 - \frac{\mathbf{u} \cdot \mathbf{v}}{\|\mathbf{u}\|_2 \|\mathbf{v}\|_2}$$
-* Pre-computed modern vectors (`models/query_vectors.npy`) enable sub-2ms query responses in `src/inference.py`.
 
-### 3. Valuation Formula
-When given a modern card $C$:
-$$\text{Projected Vintage Value} = \text{median}(\{P(N_1), \dots, P(N_k)\})$$
-$$\text{Maturation Upside} = \frac{\text{Projected Vintage Value}}{P(C)}$$
+### 3. V1 vs. V2 Empirical Benchmarks
+* **Unique Modern Vectors**: `358 / 12,818` (`2.8%`) $\rightarrow$ **`12,694 / 12,818` (`99.0%`)**
+* **Unique Vintage Cards Used Across Modern Chase Cards**: `230` $\rightarrow$ **`913` (4.0x diversity)**
+* **Vintage 5-Fold CV Spearman Correlation ($\rho$)**: `0.6383` $\rightarrow$ **`0.8259`**
+* **Vintage 5-Fold CV Log-MAE**: `0.7859` $\rightarrow$ **`0.5596` (-28.8% error)**
+* **Vintage 5-Fold CV Within 2x Actual Price**: `57.2%` $\rightarrow$ **`74.2%`**
 
 ---
 
 ## Active Backlog & Next Steps for Incoming Agents
 
-### 1. Feature Distinctiveness & Eliminating Neighbor Collisions
-* **The Problem**: Because initial features are mostly categorical flags (`is_secret_rare=1`, `rarity_tier=5`), some modern chase cards map to identical vector coordinates, yielding similar vintage neighbor lists.
-* **Actionable Features to Add** in `src/features.py`:
-  1. **Elemental / Typing Affinity (`primary_type`)**:
-     * Fire, Water, Lightning, Psychic, Dark, etc.
-     * Charizard and Fire-type chase cards historically carry distinct collector followings compared to Grass or Psychic staples.
-  2. **Generation of Origin (`generation_num`)**:
-     * Gen 1 (Kanto) and Gen 2 (Johto) cards command a heavy nostalgia multiplier over later generations.
-  3. **Continuous Set Position Ratio (`set_position_ratio`)**:
-     * Calculate $\text{Ratio} = \frac{\text{local\_id}}{\text{officialCardCount}}$. A card numbered 204/165 (deep secret) behaves differently from 166/165.
-  4. **Card Frame & Layout (`is_full_art`)**:
-     * Distinguish full-bleed textured art from standard framed cards.
+### 1. Time-Series Price Velocity & Maturation Curves
+* Utilize the historical snapshots in `data/pricing/{YYYY-MM-DD}.json` to compute short-term price momentum, volatility, and post-release depreciation/appreciation curves (J-curve dynamics).
 
-### 2. Data Refresh Automation
+### 2. Set Supply & Era Scarcity Multipliers
+* Incorporate era-level print-run estimates or set-level median chase values to calibrate maturation multipliers across eras (e.g. late-WOTC e-Card scarcity vs. XY era supply).
+
+### 3. Data Refresh Automation
 * Upstream price snapshots in `data/pricing/` update weekly on Saturdays.
 * Build an automated update script or GitHub Action that:
   1. Pulls the newest Saturday snapshot from upstream.
@@ -152,15 +155,10 @@ $$\text{Maturation Upside} = \frac{\text{Projected Vintage Value}}{P(C)}$$
   3. Runs `python3 -m src.train` to re-index the model.
   4. Commits and deploys updated tables.
 
-### 3. Visual & Qualitative Evaluation
-* Card image URLs follow TCGdex CDN conventions:
-  `https://assets.tcgdex.net/en/{series}/{set_id}/{local_id}/high.webp`
-* When testing image rendering or similarity comps, always verify high-res image availability and graceful fallback behavior.
-
 ---
 
 ## Key Files Reference
-* [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) — Core feature transformation & weight dictionary
+* [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) — V2 31-feature transformation engine & weight dictionary
 * [`src/train.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/train.py) — Training script that exports to `models/`
 * [`src/inference.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/inference.py) — Real-time inference engine
 * [`src/api.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/api.py) — FastAPI REST endpoints

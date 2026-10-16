@@ -45,9 +45,12 @@ def train_and_export_artifacts(
     print(f"Vintage training set size: {len(train_df):,} cards")
     print(f"Modern query set size:    {len(query_df):,} cards")
 
-    # 3. Fit StandardScaler on vintage features
-    print("Fitting StandardScaler and applying feature weights...")
-    scaler = StandardScaler()
+    # 3. Apply unit-range [0, 1] scaling + domain feature weights
+    # Note: All 31 features in FEATURE_COLS are bounded in [0, 1] by src/features.py.
+    # Using StandardScaler(with_mean=False, with_std=False) preserves exact [0, 1] bounds
+    # so sparse features (e.g., secret_depth, rare types) are not inflated by 1/std.
+    print("Applying unit-range [0, 1] scaling and domain feature weights...")
+    scaler = StandardScaler(with_mean=False, with_std=False)
     X_train_raw = train_df[FEATURE_COLS].values
     X_train_scaled = scaler.fit_transform(X_train_raw)
 
