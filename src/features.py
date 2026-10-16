@@ -45,7 +45,7 @@ FAN_FAVORITES = {
 
 RENOWNED_ARTISTS = {
     "Ken Sugimori", "Mitsuhiro Arita", "Naoki Saito", "Kouki Saitou",
-    "Kagemaru Himeno", "Atsuko Nishida", "Masakazu Fukuda", "Tomokazu Komiya"
+    "Kagemaru Himeno", "Atsuko Nishida", "Masakazu Fukuda", "Tomokazu Komiya",  "Yuka Morii"
 }
 
 RARITY_TIER_MAP = {
