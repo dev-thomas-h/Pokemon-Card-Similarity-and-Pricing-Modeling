@@ -1,4 +1,4 @@
-# GEMINI.md — Project Rules & Session Context
+# AGENTS.md — Project Rules & Session Context
 
 ## 1. Operational Rules & Agent Directives
 
@@ -8,18 +8,18 @@
 * **Respect ignored data**: Never force-add gitignored directories (such as `pokemon-cards/` image caches or `frontend/node_modules/`).
 
 ### Workflow & Code Quality Best Practices
-* **Working directory awareness**: If the session starts in the parent directory (`/Users/thorgy17/Top Secret Projects/Pokemon Modeling`), the repository root is [`pkm-card-data/`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data). Execute all Python, npm, and git commands from inside `pkm-card-data/`.
+* **Working directory awareness**: Ensure commands are executed from the `pkm-card-data/` repository root (if the session starts in a parent workspace directory, `cd pkm-card-data` before running Python, npm, or git commands).
 * **Read before modifying**: Always read the target source files before proposing or applying edits. Do not guess function signatures, column names, or API response schemas.
 * **Surgical, minimal edits**: Keep changes focused on the user's request. Avoid unrelated refactoring, reformatting, or adding unnecessary dependencies.
 * **Preserve documentation & comments**: Maintain existing docstrings, inline comments, and architectural explanations unless they are directly invalidated by your changes.
 * **Keep artifacts synchronized**:
-  * If you modify feature engineering in [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) or training logic in [`src/train.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/train.py), re-run `python3 -m src.train` so serialized artifacts in `models/` stay in sync, and verify results with `python3 scripts/similarity_model.py`.
-  * If you modify the React UI in [`frontend/src/`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/frontend/src), run `npm run build` inside `frontend/` so the production static bundle in `frontend/dist/` (served by FastAPI) stays updated.
+  * If you modify feature engineering in [`src/features.py`](src/features.py) or training logic in [`src/train.py`](src/train.py), re-run `python3 -m src.train` so serialized artifacts in `models/` stay in sync, and verify results with `python3 scripts/similarity_model.py`.
+  * If you modify the React UI in [`frontend/src/`](frontend/src), run `npm run build` inside `frontend/` so the production static bundle in `frontend/dist/` (served by FastAPI) stays updated.
 * **Clarify ambiguity early**: When requirements or modeling trade-offs have multiple valid interpretations, ask concise clarifying questions before making large architectural changes.
 
 ### Modeling & Domain Guardrails (Must Not Violate)
 * **Zero price leakage into modern cards**: Empirical prestige priors (`species_prestige`, `artist_prestige`) must be fitted **exclusively** on `< 2016` vintage cards. Never leak `2016+` prices into feature construction.
-* **Unit-range scaling only (`[0, 1]`)**: Never apply `StandardScaler(with_std=True)` to the feature matrix. Dividing by standard deviation ($\sigma$) inflates sparse binary/tail indicators (`secret_depth`, rare types, 1st Edition) by 10x–30x and drowns out `species_prestige` and `rarity_norm`. Every feature in `FEATURE_COLS` must be explicitly normalized to `[0, 1]` in [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) and weighted directly via `FEATURE_WEIGHTS` (`StandardScaler(with_mean=False, with_std=False)`).
+* **Unit-range scaling only (`[0, 1]`)**: Never apply `StandardScaler(with_std=True)` to the feature matrix. Dividing by standard deviation ($\sigma$) inflates sparse binary/tail indicators (`secret_depth`, rare types, 1st Edition) by 10x–30x and drowns out `species_prestige` and `rarity_norm`. Every feature in `FEATURE_COLS` must be explicitly normalized to `[0, 1]` in [`src/features.py`](src/features.py) and weighted directly via `FEATURE_WEIGHTS` (`StandardScaler(with_mean=False, with_std=False)`).
 * **Collectibility over gameplay**: Do not introduce battle/gameplay stats (`hp`, `damage`, `retreat`, `attacks`) into similarity vectors; they have near-zero correlation with secondary market collector value.
 
 ---
@@ -36,7 +36,7 @@
 
 ```text
 pkm-card-data/
-├── GEMINI.md                     # Project rules & session context (auto-loaded by Antigravity)
+├── AGENTS.md                     # Model-agnostic agent instructions & session context
 ├── README.md                     # Public documentation & dataset specifications
 ├── run_app.sh                    # Full-stack launcher script (FastAPI + static React UI)
 │
@@ -166,9 +166,9 @@ npm run build    # Rebuild production bundle into frontend/dist/
 ---
 
 ## 7. Key Files Reference
-* [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) — V2 31-feature transformation engine & weight dictionary
-* [`src/train.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/train.py) — Training script that exports serialized artifacts to `models/`
-* [`src/inference.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/inference.py) — Real-time inference engine (`CardSimilarityEngine`)
-* [`src/api.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/api.py) — FastAPI REST endpoints
-* [`frontend/src/App.jsx`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/frontend/src/App.jsx) — React interface
-* [`run_app.sh`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/run_app.sh) — Quickstart launcher
+* [`src/features.py`](src/features.py) — V2 31-feature transformation engine & weight dictionary
+* [`src/train.py`](src/train.py) — Training script that exports serialized artifacts to `models/`
+* [`src/inference.py`](src/inference.py) — Real-time inference engine (`CardSimilarityEngine`)
+* [`src/api.py`](src/api.py) — FastAPI REST endpoints
+* [`frontend/src/App.jsx`](frontend/src/App.jsx) — React interface
+* [`run_app.sh`](run_app.sh) — Quickstart launcher
