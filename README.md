@@ -133,6 +133,11 @@ pkm-card-data/
 │   ├── src/App.jsx               # Interactive Card Matcher & Top Gems UI
 │   ├── src/index.css             # Glassmorphic dark-mode collector theme
 │   └── dist/                     # Production React bundle
+├── docs/                         # Deep-dive modeling & architecture guides
+│   ├── README.md                 # Architecture overview & end-to-end card trace
+│   ├── 01-data-ingestion.md      # Deep-dive into scripts/ingest_to_tabular.py
+│   ├── 02-feature-engineering.md # Deep-dive into src/features.py (31 features)
+│   └── 03-training-and-inference.md # Deep-dive into train.py, inference.py & API
 ├── run_app.sh                    # One-command launcher for the full-stack app
 └── scripts/                      # Prototyping & one-off utility scripts
     ├── ingest_to_tabular.py      # Flattens nested JSONs and merges TCGplayer pricing
@@ -162,8 +167,10 @@ Then open your browser to **[http://localhost:8000](http://localhost:8000)**.
 
 ## Model Architecture & Design Justifications (V2 Engine)
 
+> **Detailed Modeling Documentation**: See **[`docs/README.md`](docs/README.md)** for a complete module-by-module walkthrough of the Python pipeline ([`01-data-ingestion.md`](docs/01-data-ingestion.md), [`02-feature-engineering.md`](docs/02-feature-engineering.md), and [`03-training-and-inference.md`](docs/03-training-and-inference.md)).
+
 ### 1. Why K-Nearest Neighbors (KNN)?
-* **Real-World Appraisal Grounding**: Predicting the future price of speculative collectibles using black-box regression or deep learning yields single unexplainable numbers. KNN works identically to professional appraisal comps: *"Card X is projected to reach ~$633 because these 5 historical cards with the exact same prestige archetype sell for a median of $633."*
+* **Real-World Appraisal Grounding**: Predicting the future price of speculative collectibles using black-box regression or deep learning yields single unexplainable numbers. KNN works identically to professional appraisal comps: *"Card X is projected to reach ~$737 because these 5 historical cards with the exact same prestige archetype sell for a median of $737."*
 * **Era Asymmetry**: Vintage cards (Base Set through Black & White / early XY) have experienced 10–25 years of organic supply attrition and collector price discovery. Modern cards (Sun & Moon through Scarlet & Violet) are still experiencing active pack openings and short-term market fluctuations. KNN directly connects modern card traits to mature historical baselines.
 
 ### 2. Feature Selection: 31 Collector Prestige Dimensions (V2)
@@ -171,14 +178,14 @@ Traditional card attributes like **HP, attack power, retreat costs, and damage**
 
 To prevent unrelated chase cards from colliding onto identical feature vectors, the V2 feature engine (`src/features.py`) encodes cards across **31 domain-calibrated features** bounded in **`[0, 1]`**:
 
-| Feature Group | Features | Weight | Valuation & Distinctiveness Rationale |
+| Feature Group | Features (`FEATURE_COLS`) | Weight | Valuation & Distinctiveness Rationale |
 | :--- | :--- | :---: | :--- |
-| **Empirical Species Prestige** | `species_prestige` | **3.5** | Bayesian-smoothed historical log-price premium of the exact Pokémon (`dex_id`) over its rarity-tier median, computed **strictly on `< 2016` vintage cards** (zero modern leakage). Differentiates *Charizard* (+1.89 log-residual) from *Venusaur* (+0.62) and *Umbreon* (+1.42) from *Leafeon* (+0.78). |
-| **Reconstructed Rarity & Chase Status** | `rarity_norm` (3.2), `is_secret_rare` (2.5), `secret_depth` (1.2), `is_chase_card` (1.8), `set_pos_norm` (0.8) | **0.8–3.2** | Reconstructs true collector rarity across 25+ years — rescuing 1999–2007 Gold Stars (`" Star"`), `"Shining "` cards, Crystal Secret Rares, e-Card `H01–H32` holos, and WOTC Holo-Only Rares that raw TCGdex data labeled simply as `"Rare"`. |
-| **Subject & Trainer Archetypes** | `arch_legend` (2.2), `arch_fav` (2.0), `arch_starter` (1.8), `arch_pseudo` (1.6), `arch_supporter` (2.2), `arch_item` (2.0), `arch_energy` (2.0), `arch_regular` (1.2) | **1.2–2.2** | Separates Character Supporter cards (*Miriam*, *Iono*, *Sabrina*) from Item/Tool Trainer cards (*Nest Ball*, *Ultra Ball*) and maps Pokédex archetypes. |
-| **Generation & Evolution Finality** | `gen_nostalgia` (1.6), `gen_norm` (1.0), `is_fully_evolved` (1.5), `stage_norm` (1.0) | **1.0–1.6** | Encodes Generation 1–9 nostalgia decay and extracts biological evolution finality (`is_fully_evolved`) from `evolve_from` chains so final evolutions (*Charizard ex*, *Alakazam ex*) never match unevolved basic secret rares (*Charmander*, *Ralts*). |
-| **Elemental Typing Affinity** | 11 one-hot `type_*` flags (`Fire`, `Dragon`, `Darkness`, `Psychic`, `Lightning`, `Water`, `Grass`, `Fighting`, `Metal`, `Colorless`, `Fairy`) | **1.4** | Separates collector sub-markets by elemental affinity so Fire, Psychic, and Lightning chase cards match within their respective elemental lineages. |
-| **Artist Prestige & Finishes** | `artist_prestige` (1.2), `is_renowned_artist` (0.8), `has_holo` (1.2), `has_first_edition` (0.6), `has_reverse` (0.4) | **0.4–1.2** | Combines empirical vintage illustrator residuals with a curated hall-of-fame list (*Ken Sugimori, Mitsuhiro Arita, Yuka Morii, Masakazu Fukuda, Kouki Saitou*, etc.) and repairs missing holo flags via pricing variants. |
+| **Empirical Species Prestige** | `species_prestige` | **3.5** | Bayesian-smoothed historical log-price premium (`k = 3.0`) of the exact Pokémon (`dex_id`) over its rarity-tier median, computed **strictly on `< 2016` vintage cards** (zero modern leakage). Differentiates *Charizard* from *Venusaur* and *Umbreon* from *Leafeon*. |
+| **Reconstructed Rarity & Set Position** | `rarity_norm` (4.5), `is_secret_rare` (1.8), `set_position_ratio` (1.4), `set_size_norm` (0.5) | **0.5–4.5** | Reconstructs true collector rarity across 25+ years — rescuing 1999–2007 Gold Stars (`" Star"`), `"Shining "` cards, Crystal Secret Rares, e-Card `H01–H32` holos, and WOTC Holo-Only Rares (`4.5` tier) that raw TCGdex data labeled simply as `"Rare"`. |
+| **Subject & Trainer Archetypes** | `arch_supporter` (3.0), `arch_item` (2.5), `arch_energy` (2.5), `arch_legend` (2.2), `arch_starter` (2.2), `arch_fav` (2.0), `arch_regular` (1.5) | **1.5–3.0** | Separates human Character Supporter cards (*Miriam*, *Iono*, *Sabrina*) from Item/Tool/Stadium Trainer cards (*Nest Ball*, *Ultra Ball*) and maps mutually exclusive Pokédex archetypes. |
+| **Generation, Mechanics & Evolution** | `is_fully_evolved` (2.5), `gen_nostalgia_score` (1.8), `is_special_mechanic` (1.8), `stage_norm` (1.2), `is_character_or_owner` (1.0), `gen_relative_dex` (0.6) | **0.6–2.5** | Encodes Generation 1–9 nostalgia decay, rule-box / character gallery mechanics, and biological evolution finality (`is_fully_evolved`) derived from `evolve_from` chains so final evolutions (*Charizard ex*, *Alakazam ex*) never match unevolved basic secret rares (*Charmander*, *Ralts*). |
+| **Elemental Typing Affinity** | 9 `type_*` flags: `type_fire` (1.2), `type_darkness` (1.0), `type_dragon` (1.0), `type_psychic` (1.0), `type_lightning` (1.0), `type_water` (1.0), `type_colorless` (0.8), `type_grass` (0.8), `type_other_elem` (0.8) | **0.8–1.2** | Separates collector sub-markets by elemental affinity so Fire, Darkness, Dragon, Psychic, and Lightning chase cards match within their respective elemental lineages. |
+| **Artist Prestige & Finishes** | `has_holo` (1.8), `artist_prestige` (1.4), `has_first_edition` (0.8), `has_reverse` (0.5) | **0.5–1.8** | Combines empirical vintage illustrator log-price residuals (`k = 5.0`) with curated adjustments for `RENOWNED_ARTISTS` (`+0.35`) and `CGI_STUDIOS` (`-0.35`), and repairs missing holo flags via pricing variants and rarity tiers. |
 
 ### 3. Why Unit-Range `[0, 1]` Scaling Beats `StandardScaler`
 * **The `StandardScaler` Pitfall**: Dividing features by their standard deviation ($\sigma$) inflates sparse features (`secret_depth`, rare types, or 1st-Edition flags where $\sigma \approx 0.03\text{–}0.10$) by **10x–30x**, drowning out core signals like `species_prestige` and `rarity_norm`.
