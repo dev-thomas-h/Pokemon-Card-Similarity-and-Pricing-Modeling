@@ -136,14 +136,149 @@ FEATURE_WEIGHTS = {
 FEATURE_COLS = list(FEATURE_WEIGHTS.keys())
 
 
-def build_image_url(card_id: str, set_id: str, series: str, local_id: str) -> str:
+# Canonical TCGdex CDN series codes mapped from human-readable series names
+SERIES_TO_TCGDEX_SLUG = {
+    "Base": "base",
+    "Gym": "gym",
+    "Neo": "neo",
+    "Legendary Collection": "lc",
+    "E-Card": "ecard",
+    "EX": "ex",
+    "POP": "pop",
+    "Diamond & Pearl": "dp",
+    "Platinum": "pl",
+    "HeartGold & SoulSilver": "hgss",
+    "Call of Legends": "col",
+    "Black & White": "bw",
+    "XY": "xy",
+    "Sun & Moon": "sm",
+    "Sword & Shield": "swsh",
+    "Scarlet & Violet": "sv",
+    "Mega Evolution": "me",
+    "Pokémon TCG Pocket": "tcgp",
+    "McDonald's Collection": "mc",
+    "Trainer kits": "tk",
+    "Miscellaneous": "misc",
+}
+
+# Gallery & Vault subsets whose card images live under their parent expansion on TCGdex
+TCGDEX_PARENT_SET_MAP = {
+    "swsh4.5sv": ("swsh", "swsh4.5"),
+    "swsh9tg": ("swsh", "swsh9"),
+    "swsh9.5tg": ("swsh", "swsh9"),
+    "swsh10tg": ("swsh", "swsh10"),
+    "swsh10.5tg": ("swsh", "swsh10"),
+    "swsh11tg": ("swsh", "swsh11"),
+    "swsh11.5tg": ("swsh", "swsh11"),
+    "swsh12tg": ("swsh", "swsh12"),
+    "swsh12.5tg": ("swsh", "swsh12"),
+    "swsh12.5gg": ("swsh", "swsh12.5"),
+}
+
+# Sets/promos omitted from TCGdex asset CDN that resolve on Official Pokémon TCG API CDN
+PTCG_IO_SET_MAP = {
+    "sm3.5": "sm35",
+    "sm7.5": "sm75",
+    "svp": "svp",
+    "smp": "smp",
+    "swshp": "swshp",
+    "sve": "sve",
+    "hgssp": "hsp",
+    "bog": "bp",
+    "pop6": "pop6",
+    "pl2": "pl2",
+    "sm2": "sm2",
+    "sm6": "sm6",
+    "2011bw": "mcd11",
+    "2012bw": "mcd12",
+    "2014xy": "mcd14",
+    "2015xy": "mcd15",
+    "2016xy": "mcd16",
+    "2017sm": "mcd17",
+    "2018sm": "mcd18",
+    "2019sm": "mcd19",
+    "2021swsh": "mcd21",
+    "2022swsh": "mcd22",
+}
+
+
+def build_image_url(
+    card_id: str,
+    set_id: str,
+    series: str,
+    local_id: str,
+    raw_image_url: Any = None,
+) -> str:
     """
-    Constructs the high-resolution CDN image URL from TCGdex conventions.
+    Constructs the high-resolution CDN image URL using a 4-tier resolution hierarchy:
+      1. Canonical `raw_image_url` from TCGdex catalog (`cards.json`) when present.
+      2. TCGdex parent-set path for Trainer/Galarian Gallery, Shiny Vault, and e-Card a/b variants.
+      3. Official Pokémon TCG API CDN (`images.pokemontcg.io`) for sets/holos omitted by TCGdex.
+      4. Exact `SERIES_TO_TCGDEX_SLUG` and set-prefix mapping (`sv`, `swsh`, `sm`, `bw`, `hgss`, etc.).
     """
-    s_clean = (series or "").lower().replace(" ", "").replace("&", "")
-    if not s_clean:
-        s_clean = "base"
-    return f"https://assets.tcgdex.net/en/{s_clean}/{set_id}/{local_id}/high.webp"
+    # 1. Use canonical TCGdex base image URL directly if available
+    if raw_image_url and not pd.isna(raw_image_url):
+        base = str(raw_image_url).strip().rstrip("/")
+        if base:
+            return f"{base}/high.webp"
+
+    sid = str(set_id or "").strip()
+    lid = str(local_id or "").strip()
+    ser = str(series or "").strip() if (series and not pd.isna(series)) else ""
+
+    # 2. Gallery / Vault subsets hosted under parent set on TCGdex
+    if sid in TCGDEX_PARENT_SET_MAP:
+        p_slug, p_set = TCGDEX_PARENT_SET_MAP[sid]
+        return f"https://assets.tcgdex.net/en/{p_slug}/{p_set}/{lid}/high.webp"
+
+    # Aquapolis / Skyridge e-Reader a/b barcode variants share the base number artwork on TCGdex
+    if sid in {"ecard2", "ecard3"} and re.match(r"^\d+[ab]$", lid):
+        return f"https://assets.tcgdex.net/en/ecard/{sid}/{lid[:-1]}/high.webp"
+
+    # 3. Secondary CDN (images.pokemontcg.io) for sets/subsets without TCGdex scans
+    if sid in {"ecard2", "ecard3"} and lid.startswith("H") and lid[1:].isdigit():
+        clean_h = f"H{int(lid[1:])}"
+        return f"https://images.pokemontcg.io/{sid}/{clean_h}_hires.png"
+
+    if sid == "rc":
+        num_part = lid.upper().replace("RC", "")
+        clean_rc = f"RC{int(num_part)}" if num_part.isdigit() else f"RC{num_part}"
+        return f"https://images.pokemontcg.io/bw11/{clean_rc}_hires.png"
+
+    if sid in PTCG_IO_SET_MAP:
+        ptcg_set = PTCG_IO_SET_MAP[sid]
+        clean_lid = str(int(lid)) if lid.isdigit() else lid
+        return f"https://images.pokemontcg.io/{ptcg_set}/{clean_lid}_hires.png"
+
+    # 4. Map series name (or set_id prefix) to exact TCGdex series slug
+    slug = SERIES_TO_TCGDEX_SLUG.get(ser)
+    if not slug:
+        for prefix, p_slug in (
+            ("sv", "sv"),
+            ("swsh", "swsh"),
+            ("sm", "sm"),
+            ("xy", "xy"),
+            ("bw", "bw"),
+            ("hgss", "hgss"),
+            ("col", "col"),
+            ("pl", "pl"),
+            ("dp", "dp"),
+            ("ex", "ex"),
+            ("ecard", "ecard"),
+            ("neo", "neo"),
+            ("gym", "gym"),
+            ("lc", "lc"),
+            ("pop", "pop"),
+            ("me", "me"),
+            ("tk", "tk"),
+        ):
+            if sid.lower().startswith(prefix):
+                slug = p_slug
+                break
+        else:
+            slug = "base"
+
+    return f"https://assets.tcgdex.net/en/{slug}/{sid}/{lid}/high.webp"
 
 
 def _is_supporter_trainer(row: pd.Series) -> bool:
@@ -399,7 +534,13 @@ def engineer_features(df: pd.DataFrame, sets_meta: Dict[str, Any]) -> pd.DataFra
 
     # 13. High-Res Image URL
     df["image_url"] = df.apply(
-        lambda r: build_image_url(r["card_id"], r["set_id"], r.get("series", ""), r["local_id"]),
+        lambda r: build_image_url(
+            r["card_id"],
+            r["set_id"],
+            r.get("series", ""),
+            r["local_id"],
+            r.get("raw_image_url"),
+        ),
         axis=1,
     )
 

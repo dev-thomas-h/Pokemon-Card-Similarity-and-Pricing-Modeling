@@ -226,6 +226,7 @@ def flatten_card(
         "card_id": cid,
         "name": name,
         "local_id": card.get("localId"),
+        "raw_image_url": card.get("image"),
         "set_id": sid,
         "set_name": set_obj.get("name"),
         "series": series,

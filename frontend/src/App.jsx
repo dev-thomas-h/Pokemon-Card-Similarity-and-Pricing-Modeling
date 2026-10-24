@@ -4,7 +4,68 @@ import {
   Calendar, Award, ArrowUpRight, ShieldCheck, RefreshCw, Zap
 } from 'lucide-react';
 
-const FALLBACK_IMAGE = 'https://assets.tcgdex.net/univ/base/base1/symbol';
+const FALLBACK_IMAGE =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 335" width="240" height="335">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#1e293b"/>
+          <stop offset="100%" stop-color="#0f172a"/>
+        </linearGradient>
+      </defs>
+      <rect width="240" height="335" rx="14" fill="url(#bg)" stroke="#334155" stroke-width="4"/>
+      <circle cx="120" cy="167" r="46" fill="#0f172a" stroke="#475569" stroke-width="4"/>
+      <path d="M74 167 A46 46 0 0 1 166 167 Z" fill="#ef4444" opacity="0.85"/>
+      <line x1="74" y1="167" x2="166" y2="167" stroke="#0f172a" stroke-width="6"/>
+      <circle cx="120" cy="167" r="14" fill="#f8fafc" stroke="#0f172a" stroke-width="5"/>
+    </svg>`
+  );
+
+function getThumbnailUrl(url) {
+  if (!url) return FALLBACK_IMAGE;
+  if (url.endsWith('/high.webp')) {
+    return url.slice(0, -10) + '/low.webp';
+  }
+  if (url.endsWith('_hires.png')) {
+    return url.slice(0, -10) + '.png';
+  }
+  return url;
+}
+
+function handleImageError(e, card) {
+  const img = e.currentTarget;
+  const currentSrc = img.src || '';
+
+  // Stage 1: If a low-res thumbnail failed, try the high-res URL once
+  if (currentSrc.endsWith('/low.webp') && !img.dataset.triedHigh) {
+    img.dataset.triedHigh = '1';
+    img.src = currentSrc.slice(0, -9) + '/high.webp';
+    return;
+  }
+
+  // Stage 2: If TCGdex CDN failed and we have set_id + card_id, try images.pokemontcg.io once
+  if (
+    currentSrc.includes('assets.tcgdex.net') &&
+    card?.set_id &&
+    card?.card_id &&
+    !img.dataset.triedPtcg
+  ) {
+    img.dataset.triedPtcg = '1';
+    const prefix = `${card.set_id}-`;
+    const rawLocal = card.card_id.startsWith(prefix)
+      ? card.card_id.slice(prefix.length)
+      : card.card_id.split('-').pop();
+    const cleanLocal = /^\d+$/.test(rawLocal) ? String(parseInt(rawLocal, 10)) : rawLocal;
+    const cleanSet = card.set_id.replace('.', '');
+    img.src = `https://images.pokemontcg.io/${cleanSet}/${cleanLocal}.png`;
+    return;
+  }
+
+  // Final stage: Lock onto inline SVG placeholder with zero further network requests
+  img.onerror = null;
+  img.src = FALLBACK_IMAGE;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('explorer');
@@ -209,10 +270,12 @@ export default function App() {
                   }}
                 >
                   <img 
-                    src={c.image_url} 
+                    src={getThumbnailUrl(c.image_url)} 
                     alt={c.name}
                     className="chip-img"
-                    onError={(e) => { e.target.src = FALLBACK_IMAGE; }}
+                    loading="lazy"
+                    decoding="async"
+                    onError={(e) => handleImageError(e, c)}
                   />
                   <div className="chip-info">
                     <span className="chip-name">{c.name}</span>
@@ -244,7 +307,8 @@ export default function App() {
                     src={target.image_url} 
                     alt={target.name}
                     className="card-img-large"
-                    onError={(e) => { e.target.src = FALLBACK_IMAGE; }}
+                    decoding="async"
+                    onError={(e) => handleImageError(e, target)}
                   />
                   <h2 className="card-name-title">{target.name}</h2>
                   <p className="card-set-title">
@@ -342,7 +406,9 @@ export default function App() {
                         src={v.image_url} 
                         alt={v.name}
                         className="v-card-img"
-                        onError={(e) => { e.target.src = FALLBACK_IMAGE; }}
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => handleImageError(e, v)}
                       />
                       <h4 className="v-card-name">{v.name}</h4>
                       <p className="v-card-set">
@@ -410,10 +476,12 @@ export default function App() {
                       <td>
                         <div className="gem-card-cell">
                           <img 
-                            src={g.image_url} 
+                            src={getThumbnailUrl(g.image_url)} 
                             alt={g.name} 
                             className="gem-mini-img"
-                            onError={(e) => { e.target.src = FALLBACK_IMAGE; }}
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => handleImageError(e, g)}
                           />
                           <div>
                             <div style={{ fontWeight: 700 }}>{g.name}</div>

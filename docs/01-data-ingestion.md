@@ -6,7 +6,7 @@
 
 ## 1. Purpose & Architectural Role
 
-[`scripts/ingest_to_tabular.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/scripts/ingest_to_tabular.py) is **Stage 1** of the modeling pipeline. Its job is to take three separate, deeply nested JSON files from the TCGdex data cache and unify them into a single, flat, strictly typed 40-column table (`21,812` rows) saved at [`data/cards_tabular.parquet`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/data/cards_tabular.parquet) (and [`data/cards_tabular.csv`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/data/cards_tabular.csv)).
+[`scripts/ingest_to_tabular.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/scripts/ingest_to_tabular.py) is **Stage 1** of the modeling pipeline. Its job is to take three separate, deeply nested JSON files from the TCGdex data cache and unify them into a single, flat, strictly typed 41-column table (`21,812` rows) saved at [`data/cards_tabular.parquet`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/data/cards_tabular.parquet) (and [`data/cards_tabular.csv`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/data/cards_tabular.csv)).
 
 ```mermaid
 flowchart LR
@@ -19,7 +19,7 @@ flowchart LR
     subgraph IngestScript["scripts/ingest_to_tabular.py"]
         M["fetch_set_metadata()\nEnriches releaseDate & serie\nCaches to sets_metadata.json"]
         E["extract_pricing()\nResolves finish priority\n(holofoil -> normal -> ...)"]
-        F["flatten_card()\nExtracts 40 typed columns\nComputes is_older_era (<2016)"]
+        F["flatten_card()\nExtracts 41 typed columns\nComputes is_older_era (<2016)"]
     end
 
     subgraph Outputs["Tabular Outputs (data/)"]
@@ -135,14 +135,14 @@ Uses regex (`re.findall(r"\d+", damage_val)`) to turn strings like `"40+"`, `"10
 
 ---
 
-### 2.4 Flattening Each Card Record: [`flatten_card()`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/scripts/ingest_to_tabular.py#L152-L274)
+### 2.4 Flattening Each Card Record: [`flatten_card()`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/scripts/ingest_to_tabular.py#L152-L275)
 
 #### What it does
-Takes `(card, pricing_entry, set_meta)` for a single card and returns a flat 40-key dictionary organized into 5 logical groups:
+Takes `(card, pricing_entry, set_meta)` for a single card and returns a flat 41-key dictionary organized into 5 logical groups:
 
 | Column Group | Columns Produced | Downstream Usage |
 | :--- | :--- | :--- |
-| **1. Identifiers & Era** | `card_id`, `name`, `local_id`, `set_id`, `set_name`, `series`, `release_date`, `release_year`, `is_older_era` | Used for indexing, CDN image URL building, set position parsing, and the `< 2016` Vintage vs. `>= 2016` Modern split (`is_older_era`). |
+| **1. Identifiers & Era** | `card_id`, `name`, `local_id`, `raw_image_url`, `set_id`, `set_name`, `series`, `release_date`, `release_year`, `is_older_era` | Used for indexing, CDN image URL building (`raw_image_url` + series/set fallback), set position parsing, and the `< 2016` Vintage vs. `>= 2016` Modern split (`is_older_era`). |
 | **2. Classification & Lore** | `category`, `rarity`, `stage`, `primary_type`, `secondary_type`, `types_count`, `dex_id`, `evolve_from`, `illustrator` | Primary inputs to [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) for rarity reconstruction, evolution graphs, species/artist prestige, archetypes, and elemental types. |
 | **3. Gameplay / Battle Stats** | `hp`, `retreat`, `attack_count`, `max_attack_damage`, `min_attack_damage`, `total_attack_energy_cost`, `ability_count`, `weakness_type`, `resistance_type` | Stored in the Parquet table for dataset completeness and exploratory analysis, but **deliberately excluded** from KNN similarity features. |
 | **4. Printings & Finishes** | `has_normal`, `has_holo`, `has_reverse`, `has_first_edition`, `legal_standard`, `legal_expanded` | Used in [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py) both as finish features and to detect WOTC Holo-Only Rares (`has_holo and not has_normal`). |

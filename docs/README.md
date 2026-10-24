@@ -37,7 +37,7 @@ KNN directly formalizes the professional appraisal workflow. Instead of outputti
 flowchart LR
     subgraph Stage1["Stage 1: Data Ingestion"]
         J["Raw JSONs\n• data/cards.json\n• data/sets.json\n• data/pricing/latest.json"] --> ING["scripts/ingest_to_tabular.py"]
-        ING --> TAB["data/cards_tabular.parquet\n(21,812 cards x 40 cols)"]
+        ING --> TAB["data/cards_tabular.parquet\n(21,812 cards x 41 cols)"]
     end
 
     subgraph Stage2["Stage 2: Feature Engine"]

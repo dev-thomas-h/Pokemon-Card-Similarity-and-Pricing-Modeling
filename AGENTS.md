@@ -48,7 +48,7 @@ pkm-card-data/
 │   ├── cards.json                # Raw catalog dump from TCGdex (nested: set_id -> card_id)
 │   ├── sets.json                 # Raw set list from TCGdex (206 sets)
 │   ├── sets_metadata.json        # Cached set release dates, series, and officialCardCount
-│   ├── cards_tabular.parquet     # Unified typed table (21,812 cards, 40 base columns)
+│   ├── cards_tabular.parquet     # Unified typed table (21,812 cards, 41 base columns)
 │   ├── cards_tabular.csv         # CSV export for inspection
 │   └── pricing/
 │       ├── latest.json           # Latest complete market price snapshot (TCGplayer USD, Cardmarket EUR)

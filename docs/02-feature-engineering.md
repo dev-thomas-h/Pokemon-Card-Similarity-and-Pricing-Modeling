@@ -65,9 +65,13 @@ At the top of [`src/features.py`](file:///Users/thorgy17/Top%20Secret%20Projects
 
 ### 2.2 Helper Functions ([Lines 139–254](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py#L139-L254))
 
-#### 1. [`build_image_url(card_id, set_id, series, local_id)`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py#L139-L146)
-* **How it works**: Normalizes the `series` name (lowercased, spaces and `&` stripped, e.g. `"Scarlet & Violet"` $\rightarrow$ `"scarletviolet"`) and builds `https://assets.tcgdex.net/en/{s_clean}/{set_id}/{local_id}/high.webp`.
-* **Why it exists**: Pre-computing the high-resolution `.webp` URL onto `train_cards.parquet` and `query_cards.parquet` allows the React frontend to render crisp card artwork directly from the CDN without needing the 1.4 GB local `pokemon-cards/` folder.
+#### 1. [`build_image_url(card_id, set_id, series, local_id, raw_image_url=None)`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py#L204-L281)
+* **How it works**: Resolves each card's high-resolution artwork URL using a 4-tier hierarchy:
+  1. **Canonical TCGdex `raw_image_url`**: Uses `card["image"] + "/high.webp"` directly when present in `data/cards.json` (`91.9%` of cards).
+  2. **TCGdex Parent-Set Subset Mapping (`TCGDEX_PARENT_SET_MAP`)**: Routes Trainer Gallery (`swsh9tg`–`swsh12tg`), Galarian Gallery (`swsh12.5gg`), Shiny Vault (`swsh4.5sv`), and e-Card `a/b` barcode variants (`50a` $\rightarrow$ `50`) to their parent set paths on TCGdex.
+  3. **Official Pokémon TCG API CDN (`PTCG_IO_SET_MAP`)**: Routes sets and holo subsets omitted by TCGdex (`sm3.5` *Shining Legends*, `sm7.5` *Dragon Majesty*, `ecard2`/`ecard3` `H01–H32` holos, `rc` *Radiant Collection*, and missing `smp`/`svp`/`swshp` promos) to `https://images.pokemontcg.io/{ptcg_set}/{local_id}_hires.png`.
+  4. **Exact Series Slug Lookup (`SERIES_TO_TCGDEX_SLUG`)**: Maps human-readable series names to TCGdex's short codes (e.g., `"Scarlet & Violet"` $\rightarrow$ `"sv"`, `"Sword & Shield"` $\rightarrow$ `"swsh"`, `"Sun & Moon"` $\rightarrow$ `"sm"`, `"Black & White"` $\rightarrow$ `"bw"`, `"HeartGold & SoulSilver"` $\rightarrow$ `"hgss"`).
+* **Why it exists**: Pre-computing verified CDN URLs onto `train_cards.parquet` and `query_cards.parquet` allows the React frontend to load lightweight `/low.webp` thumbnails in search trays and `/high.webp` artwork in appraisal views without needing the 1.4 GB local `pokemon-cards/` folder.
 
 #### 2. [`_is_supporter_trainer(row)`](file:///Users/thorgy17/Top%20Secret%20Projects/Pokemon%20Modeling/pkm-card-data/src/features.py#L149-L157)
 * **How it works**: Returns `False` if `row["category"] != "Trainer"`. Otherwise checks if any keyword in `ITEM_TRAINER_KEYWORDS` appears as a substring of `row["name"].lower()`. If no object/stadium keyword matches, it classifies the Trainer card as a human character Supporter (`True`).

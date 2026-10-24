@@ -115,7 +115,7 @@ This repository extends the raw card snapshot data with a machine-learning pipel
 ```
 pkm-card-data/
 ├── data/
-│   ├── cards_tabular.parquet     # Unified, typed tabular dataset (21,812 cards, 40 columns)
+│   ├── cards_tabular.parquet     # Unified, typed tabular dataset (21,812 cards, 41 columns)
 │   ├── cards_tabular.csv         # CSV export for inspection and analysis
 │   └── sets_metadata.json        # Cached set release dates, series, and official counts
 ├── models/                       # Serialized ML artifacts for sub-5ms inference

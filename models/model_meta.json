@@ -1,5 +1,5 @@
 {
-  "trained_at": "2026-10-16T02:44:51.432139",
+  "trained_at": "2026-10-24T20:58:00.927116",
   "train_cards_count": 7964,
   "query_cards_count": 12818,
   "feature_cols": [
@@ -68,5 +68,5 @@
     "type_grass": 0.8,
     "type_other_elem": 0.8
   },
-  "elapsed_seconds": 4.58
+  "elapsed_seconds": 5.02
 }
